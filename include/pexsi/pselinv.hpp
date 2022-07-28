@@ -684,7 +684,7 @@ protected:
   inline void UnpackData(SuperNodeBufferType & snode, std::vector<LBlock<T> > & LcolRecv, std::vector<UBlock<T> > & UrowRecv);
 
   /// @brief ComputeDiagUpdate
-  inline void ComputeDiagUpdate(SuperNodeBufferType & snode);
+  inline void ComputeDiagUpdate(SuperNodeBufferType & snode, std::set<std::string> quantSuperNode);
 
   /// @brief SendRecvCD_UpdateU
   inline void SendRecvCD_UpdateU(std::vector<SuperNodeBufferType > & arrSuperNodes, Int stepSuper);

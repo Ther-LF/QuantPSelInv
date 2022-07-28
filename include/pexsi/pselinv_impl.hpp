@@ -1209,22 +1209,31 @@ namespace PEXSI{
     }
 
   template<typename T>
-    inline void PMatrix<T>::ComputeDiagUpdate(SuperNodeBufferType & snode)
+    inline void PMatrix<T>::ComputeDiagUpdate(SuperNodeBufferType & snode, std::set<std::string> quantSuperNode)
     {
 
       //---------Computing  Diagonal block, all processors in the column are participating to all pipelined supernodes
-      if( MYCOL( grid_ ) == PCOL( snode.Index, grid_ ) ){
+      if( MYCOL( grid_ ) == PCOL( snode.Index, grid_ ) ){ //如果本processor和这个supernode在一列，即Ljk
 #if ( _DEBUGlevel_ >= 2 )
         statusOFS << std::endl << "["<<snode.Index<<"] "<<   "Updating the diagonal block" << std::endl << std::endl; 
 #endif
-        std::vector<LBlock<T> >&  Lcol = this->L( LBj( snode.Index, grid_ ) );
+        std::vector<LBlock<T> >&  Lcol = this->L( LBj( snode.Index, grid_ ) ); //得到本地的所有L block
 
         //Allocate DiagBuf even if Lcol.size() == 0
-        snode.DiagBuf.Resize(SuperSize( snode.Index, super_ ), SuperSize( snode.Index, super_ ));
+        snode.DiagBuf.Resize(SuperSize( snode.Index, super_ ), SuperSize( snode.Index, super_ )); //设置本地的Lkk
         SetValue(snode.DiagBuf, ZERO<T>());
 
+        
+        std::stringstream ss;
         // Do I own the diagonal block ?
-        Int startIb = (MYROW( grid_ ) == PROW( snode.Index, grid_ ))?1:0;
+        Int startIb = (MYROW( grid_ ) == PROW( snode.Index, grid_ ))?1:0;//如果我拥有Lkk，那么要跳过这个block
+
+        NumMat<float> LUpdateBuf_quant(snode.LUpdateBuf.m(), snode.LUpdateBuf.n());
+        for(int j = 0;j<LUpdateBuf_quant.n();j++){
+          for(int i = 0;i<LUpdateBuf_quant.m();i++){
+            LUpdateBuf_quant(i, j) = (float)snode.LUpdateBuf(i, j);
+          }
+        }
         for( Int ib = startIb; ib < Lcol.size(); ib++ ){
 
 #ifdef GEMM_PROFILE
@@ -1234,15 +1243,59 @@ namespace PEXSI{
 #endif
 
           LBlock<T> & LB = Lcol[ib];
+          
+          ss.str("");
+          ss<<LB.blockIdx << "," <<snode.Index;
 
-          blas::Gemm( 'T', 'N', snode.DiagBuf.m(), snode.DiagBuf.n(), LB.numRow, 
-              MINUS_ONE<T>(), &snode.LUpdateBuf( snode.RowLocalPtr[ib-startIb], 0 ), snode.LUpdateBuf.m(),
-              LB.nzval.Data(), LB.nzval.m(), ONE<T>(), snode.DiagBuf.Data(), snode.DiagBuf.m() );
+          if(quantSuperNode.find(ss.str()) == quantSuperNode.end()){
+            //下面应该是第四步，意思是：
+            //Lkk = -1 * (A^-1)^T * L + 1 * Lkk
+            //但是这里为什么是A-1的转置不太懂
+            //这里Lik和A-1的下标都是一样的，所以直接判断Lik的坐标就可以进行量化了
+            blas::Gemm( 'T', 'N', snode.DiagBuf.m(), snode.DiagBuf.n(), LB.numRow, 
+                MINUS_ONE<T>(), &snode.LUpdateBuf( snode.RowLocalPtr[ib-startIb], 0 ), snode.LUpdateBuf.m(),
+                LB.nzval.Data(), LB.nzval.m(), ONE<T>(), snode.DiagBuf.Data(), snode.DiagBuf.m() );
+          }else{
+            //进行量化，但是由于精度不同，应该分为两步
+            //先把A-1和L进行量化
+            std::cout<<"Quant"<<ss.str()<<std::endl;
+            
+
+            // double* LUpdateBuf_data =  &snode.LUpdateBuf( snode.RowLocalPtr[ib-startIb], 0 );
+            // for(int j = 0;j<LUpdateBuf_quant.n();j++){
+            //   for(int i = 0;i<LUpdateBuf_quant.m();i++){
+            //     LUpdateBuf_quant(i, j) = (float)LUpdateBuf_data[i + j * LUpdateBuf_quant.m()];
+            //   }
+            // }
+            NumMat<float> LB_quant(LB.numRow, LB.numCol);
+            for(int j = 0;j<LB_quant.n();j++){
+              for(int i = 0;i<LB_quant.m();i++){
+                LB_quant(i, j) = (float)LB.nzval(i, j);
+              }
+            }
+            //然后用一个临时的量化Lkk保存它们的结果，而不能直接加进来
+            NumMat<float> DiagBuf_quant(SuperSize( snode.Index, super_ ), SuperSize( snode.Index, super_ ));
+            blas::Gemm( 'T', 'N', snode.DiagBuf.m(), snode.DiagBuf.n(), LB.numRow, 
+                MINUS_ONE<float>(), &LUpdateBuf_quant( snode.RowLocalPtr[ib-startIb], 0 ), snode.LUpdateBuf.m(),
+                LB_quant.Data(), LB.nzval.m(), ZERO<float>(), DiagBuf_quant.Data(), snode.DiagBuf.m() );
+            //最后把结果加到Lkk中
+            for(int j = 0;j<DiagBuf_quant.n();j++){
+              for(int i = 0;i<DiagBuf_quant.m();i++){
+                snode.DiagBuf(i, j) = snode.DiagBuf(i, j) + (double)DiagBuf_quant(i, j);
+              }
+            }
+
+            //释放资源
+            DiagBuf_quant.deallocate();
+            LB_quant.deallocate();
+            
+          }
+          
 #ifdef _PRINT_STATS_
                 this->localFlops_+=flops::Gemm<T>(snode.DiagBuf.m(), snode.DiagBuf.n(), LB.numRow);
 #endif
         } 
-
+        LUpdateBuf_quant.deallocate();
 
 #if ( _DEBUGlevel_ >= 1 )
         statusOFS << std::endl << "["<<snode.Index<<"] "<<   "Updated the diagonal block" << std::endl << std::endl; 
@@ -2255,16 +2308,17 @@ namespace PEXSI{
             } // if Gemm is to be done locally
 
             //Get the reduction tree
-            //下面这一步不太懂
+            //下面这一步不太懂，按照论文中的算法来说应该是把结果Reduce到Ljk去了
+            //那这一步是干嘛？不懂
             TreeReduce<T> * redLTree = redToLeftTree_[snode.Index];
-            if(redLTree != NULL){
+            if(redLTree != NULL){ //这里好像是通过判断是否为NULL来判断是否需要进行reduce的
               assert( snode.LUpdateBuf.m() != 0 && snode.LUpdateBuf.n() != 0 );
                 TIMER_START(Reduce_Sinv_LT_Isend);
                 //send the data
-                redLTree->SetLocalBuffer(snode.LUpdateBuf.Data());
+                redLTree->SetLocalBuffer(snode.LUpdateBuf.Data());//设置reduce数据？
                 redLTree->SetDataReady(true);
 
-                bool done = redLTree->Progress();//感觉这个需要好好研究下后面
+                bool done = redLTree->Progress();//进行reduce？
 #if ( _DEBUGlevel_ >= 1 )
                 statusOFS<<"["<<snode.Index<<"] "<<" trying to progress reduce L "<<done<<std::endl;
 #endif
@@ -2278,11 +2332,12 @@ namespace PEXSI{
 #endif
 
             //advance reductions
+            //这里也不懂
             for (Int supidx=0; supidx<stepSuper; supidx++){
               SuperNodeBufferType & snode = arrSuperNodes[supidx];
               TreeReduce<T> * redLTree = redToLeftTree_[snode.Index];
               if(redLTree != NULL && !redLdone[supidx]){
-                bool done = redLTree->Progress();
+                bool done = redLTree->Progress();//继续reduce？
 
 #if ( _DEBUGlevel_ >= 1 )
                 statusOFS<<"["<<snode.Index<<"] "<<" trying to progress reduce L "<<done<<std::endl;
@@ -2299,6 +2354,7 @@ namespace PEXSI{
 
 
       TIMER_START(Reduce_Sinv_LT);
+      //好像从这里开始才是开始reduce Ljk了
       //blocking wait for the reduction
       bool all_done = false;
       while(!all_done)
@@ -2310,12 +2366,12 @@ namespace PEXSI{
 
           TreeReduce<T> * redLTree = redToLeftTree_[snode.Index];
 
-            if(redLTree != NULL && !redLdone[supidx])
+            if(redLTree != NULL && !redLdone[supidx])//如果需要reduce但是还没有reduce成功？
             {
 
               //TODO restore this
               //bool done = redLTree->Progress();
-              redLTree->Wait();
+              redLTree->Wait();//等待reduce成功
               bool done = true;
 #if ( _DEBUGlevel_ >= 1 )
               statusOFS<<"["<<snode.Index<<"] "<<" trying to progress reduce L "<<done<<std::endl;
@@ -2328,30 +2384,31 @@ namespace PEXSI{
 #endif
 
 //if(redLTree->GetTag() == 2344 && MYPROC(grid_)==0){gdb_lock();}
-                if( MYCOL( grid_ ) == PCOL( snode.Index, grid_ ) ){
+                if( MYCOL( grid_ ) == PCOL( snode.Index, grid_ ) ){ // 如果本processor和supernode在同一列，即Ljk
                   //determine the number of rows in LUpdateBufReduced
+                  //下面好像是根据本地的L Block将LUpdateBufReduced进行分行，方便后面进行GEMM
                   Int numRowLUpdateBuf;
                   std::vector<LBlock<T> >&  Lcol = this->L( LBj( snode.Index, grid_ ) );
-                  if( MYROW( grid_ ) != PROW( snode.Index, grid_ ) ){
-                    snode.RowLocalPtr.resize( Lcol.size() + 1 );
-                    snode.BlockIdxLocal.resize( Lcol.size() );
+                  if( MYROW( grid_ ) != PROW( snode.Index, grid_ ) ){// 如果本processor和supernode不在同一行，即不是Lkk
+                    snode.RowLocalPtr.resize( Lcol.size() + 1 ); //这个记录每个L block对应的第一个非零行
+                    snode.BlockIdxLocal.resize( Lcol.size() ); //这个记录本地L block的supernode行
                     snode.RowLocalPtr[0] = 0;
                     for( Int ib = 0; ib < Lcol.size(); ib++ ){
                       snode.RowLocalPtr[ib+1] = snode.RowLocalPtr[ib] + Lcol[ib].numRow;
                       snode.BlockIdxLocal[ib] = Lcol[ib].blockIdx;
                     }
                   } // I do not own the diagonal block
-                  else{
-                    snode.RowLocalPtr.resize( Lcol.size() );
-                    snode.BlockIdxLocal.resize( Lcol.size() - 1 );
+                  else{ //如果是Lkk
+                    snode.RowLocalPtr.resize( Lcol.size() );//如果是Lkk那么实际需要操作的block就比原来少一个
+                    snode.BlockIdxLocal.resize( Lcol.size() - 1 );//同上，少一个
                     snode.RowLocalPtr[0] = 0;
                     for( Int ib = 1; ib < Lcol.size(); ib++ ){
                       snode.RowLocalPtr[ib] = snode.RowLocalPtr[ib-1] + Lcol[ib].numRow;
                       snode.BlockIdxLocal[ib-1] = Lcol[ib].blockIdx;
                     }
                   } // I own the diagonal block, skip the diagonal block
-                  numRowLUpdateBuf = *snode.RowLocalPtr.rbegin();
-
+                  numRowLUpdateBuf = *snode.RowLocalPtr.rbegin();//总的行数
+                  //下面也不懂在干嘛，但是应该不涉及计算
                   if( numRowLUpdateBuf > 0 ){
                     if( snode.LUpdateBuf.m() == 0 && snode.LUpdateBuf.n() == 0 ){
                       snode.LUpdateBuf.Resize( numRowLUpdateBuf,SuperSize( snode.Index, super_ ) );
@@ -2378,10 +2435,10 @@ namespace PEXSI{
 
       TIMER_START(Update_Diagonal);
 
-      for (Int supidx=0; supidx<stepSuper; supidx++){
+      for (Int supidx=0; supidx<stepSuper; supidx++){ //对于每一个要操作的supernode
         SuperNodeBufferType & snode = arrSuperNodes[supidx];
 
-        ComputeDiagUpdate(snode);
+        ComputeDiagUpdate(snode, quantSuperNode);
 
         //Get the reduction tree
         TreeReduce<T> * redDTree = redToAboveTree_[snode.Index];
