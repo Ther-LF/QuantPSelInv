@@ -931,29 +931,29 @@ namespace PEXSI{
 
       TIMER_START(Send_CD_Update_U);
       //compute the number of requests
-      Int sendCount = 0;
-      Int recvCount = 0;
-      Int sendOffset[stepSuper];
-      Int recvOffset[stepSuper];
+      Int sendCount = 0;//发送的数量
+      Int recvCount = 0;//接受的数量
+      Int sendOffset[stepSuper];//每个supernode的发送偏移量
+      Int recvOffset[stepSuper];//每个supernode的接受偏移量
       Int recvIdx=0;
       for (Int supidx=0; supidx<stepSuper; supidx++){
         SuperNodeBufferType & snode = arrSuperNodes[supidx];
         sendOffset[supidx]=sendCount;
         recvOffset[supidx]=recvCount;
-        sendCount+= CountSendToCrossDiagonal(snode.Index);
-        recvCount+= CountRecvFromCrossDiagonal(snode.Index);
+        sendCount+= CountSendToCrossDiagonal(snode.Index);//需要发送到对角线的数量
+        recvCount+= CountRecvFromCrossDiagonal(snode.Index);//需要从对角线接受的数量
       }
 
 
-      std::vector<MPI_Request > arrMpiReqsSendCD(sendCount, MPI_REQUEST_NULL );
-      std::vector<MPI_Request > arrMpiReqsSizeSendCD(sendCount, MPI_REQUEST_NULL );
+      std::vector<MPI_Request > arrMpiReqsSendCD(sendCount, MPI_REQUEST_NULL );//发送内容的句柄数组？
+      std::vector<MPI_Request > arrMpiReqsSizeSendCD(sendCount, MPI_REQUEST_NULL );//发送Size的句柄数组？
 
-      std::vector<MPI_Request > arrMpiReqsRecvCD(recvCount, MPI_REQUEST_NULL );
-      std::vector<MPI_Request > arrMpiReqsSizeRecvCD(recvCount, MPI_REQUEST_NULL );
-      std::vector<std::vector<char> > arrSstrLcolSendCD(sendCount);
-      std::vector<int > arrSstrLcolSizeSendCD(sendCount);
-      std::vector<std::vector<char> > arrSstrLcolRecvCD(recvCount);
-      std::vector<int > arrSstrLcolSizeRecvCD(recvCount);
+      std::vector<MPI_Request > arrMpiReqsRecvCD(recvCount, MPI_REQUEST_NULL );//接受内容的句柄数组？
+      std::vector<MPI_Request > arrMpiReqsSizeRecvCD(recvCount, MPI_REQUEST_NULL );//接受Size的句柄数组？
+      std::vector<std::vector<char> > arrSstrLcolSendCD(sendCount);//保存发送内容的本地数组
+      std::vector<int > arrSstrLcolSizeSendCD(sendCount);//保存发送大小的本地数组
+      std::vector<std::vector<char> > arrSstrLcolRecvCD(recvCount);//保存接受内容的本地数组
+      std::vector<int > arrSstrLcolSizeRecvCD(recvCount);//保存接受大小的本地数组
 
       for (Int supidx=0; supidx<stepSuper; supidx++){
         SuperNodeBufferType & snode = arrSuperNodes[supidx];
@@ -963,35 +963,35 @@ namespace PEXSI{
 
         TIMER_START(Send_L_CrossDiag);
 
-        if( MYCOL( grid_ ) == PCOL( snode.Index, grid_ ) && isSendToCrossDiagonal_(grid_->numProcCol, snode.Index ) ){
+        if( MYCOL( grid_ ) == PCOL( snode.Index, grid_ ) && isSendToCrossDiagonal_(grid_->numProcCol, snode.Index ) ){//如果本processor保存了这个supernode的一部分，并且确实需要发送这个supernode
 
           Int sendIdx = 0;
           for(Int dstCol = 0; dstCol<grid_->numProcCol; dstCol++){
             if(isSendToCrossDiagonal_(dstCol,snode.Index) ){
-              Int dest = PNUM(PROW(snode.Index,grid_),dstCol,grid_);
+              Int dest = PNUM(PROW(snode.Index,grid_),dstCol,grid_);//得到目标processor
 
-              if( MYPROC( grid_ ) != dest	){
-                MPI_Request & mpiReqSizeSend = arrMpiReqsSizeSendCD[sendOffset[supidx]+sendIdx];
-                MPI_Request & mpiReqSend = arrMpiReqsSendCD[sendOffset[supidx]+sendIdx];
+              if( MYPROC( grid_ ) != dest	){//自己不是目标processor
+                MPI_Request & mpiReqSizeSend = arrMpiReqsSizeSendCD[sendOffset[supidx]+sendIdx];//发送大小句柄
+                MPI_Request & mpiReqSend = arrMpiReqsSendCD[sendOffset[supidx]+sendIdx];//发送内容句柄
 
 
                 std::stringstream sstm;
                 std::vector<char> & sstrLcolSend = arrSstrLcolSendCD[sendOffset[supidx]+sendIdx];
                 Int & sstrSize = arrSstrLcolSizeSendCD[sendOffset[supidx]+sendIdx];
-
+                //打包Ainv的内容
                 serialize( snode.RowLocalPtr, sstm, NO_MASK );
                 serialize( snode.BlockIdxLocal, sstm, NO_MASK );
                 serialize( snode.LUpdateBuf, sstm, NO_MASK );
 
                 sstrLcolSend.resize( Size(sstm) );
-                sstm.read( &sstrLcolSend[0], sstrLcolSend.size() );
-                sstrSize = sstrLcolSend.size();
+                sstm.read( &sstrLcolSend[0], sstrLcolSend.size() );//将内容发送到本地数组
+                sstrSize = sstrLcolSend.size();//将大小保存在本地数组
 
 #if ( _DEBUGlevel_ >= 1 )
                 assert(IDX_TO_TAG(snode.Rank,SELINV_TAG_L_SIZE_CD,limIndex_)<=maxTag_);
                 assert(IDX_TO_TAG(snode.Rank,SELINV_TAG_L_CONTENT_CD,limIndex_)<=maxTag_);
 #endif
-
+                //发送
                 MPI_Isend( &sstrSize, sizeof(sstrSize), MPI_BYTE, dest, IDX_TO_TAG(snode.Rank,SELINV_TAG_L_SIZE_CD,limIndex_), grid_->comm, &mpiReqSizeSend );
                 MPI_Isend( (void*)&sstrLcolSend[0], sstrSize, MPI_BYTE, dest, IDX_TO_TAG(snode.Rank,SELINV_TAG_L_CONTENT_CD,limIndex_), grid_->comm, &mpiReqSend );
 
@@ -1014,11 +1014,11 @@ namespace PEXSI{
       for (Int supidx=0; supidx<stepSuper; supidx++){
         SuperNodeBufferType & snode = arrSuperNodes[supidx];
         //If I'm a receiver
-        if( MYROW( grid_ ) == PROW( snode.Index, grid_ ) && isRecvFromCrossDiagonal_(grid_->numProcRow, snode.Index ) ){
+        if( MYROW( grid_ ) == PROW( snode.Index, grid_ ) && isRecvFromCrossDiagonal_(grid_->numProcRow, snode.Index ) ){//如果我是这个supernode的row
           Int recvIdx=0;
           for(Int srcRow = 0; srcRow<grid_->numProcRow; srcRow++){
             if(isRecvFromCrossDiagonal_(srcRow,snode.Index) ){
-              Int src = PNUM(srcRow,PCOL(snode.Index,grid_),grid_);
+              Int src = PNUM(srcRow,PCOL(snode.Index,grid_),grid_);//得到src的processor
               if( MYPROC( grid_ ) != src ){
                 Int & sstrSize = arrSstrLcolSizeRecvCD[recvOffset[supidx]+recvIdx];
                 MPI_Request & mpiReqSizeRecv = arrMpiReqsSizeRecvCD[recvOffset[supidx]+recvIdx];
@@ -1026,6 +1026,7 @@ namespace PEXSI{
 #if ( _DEBUGlevel_ >= 1 )
                 assert(IDX_TO_TAG(snode.Rank,SELINV_TAG_L_CONTENT_CD,limIndex_)<=maxTag_);
 #endif
+                //接受大小
                 MPI_Irecv( &sstrSize, 1, MPI_INT, src, IDX_TO_TAG(snode.Rank,SELINV_TAG_L_SIZE_CD,limIndex_), grid_->comm, &mpiReqSizeRecv);
                 recvIdx++;
               }
@@ -1035,12 +1036,12 @@ namespace PEXSI{
       }
 
       //waitall sizes
-      mpi::Waitall(arrMpiReqsSizeRecvCD);
+      mpi::Waitall(arrMpiReqsSizeRecvCD);//等所有的size接受完
       //Allocate content and do Irecv
       for (Int supidx=0; supidx<stepSuper; supidx++){
         SuperNodeBufferType & snode = arrSuperNodes[supidx];
         //If I'm a receiver
-        if( MYROW( grid_ ) == PROW( snode.Index, grid_ ) && isRecvFromCrossDiagonal_(grid_->numProcRow, snode.Index ) ){
+        if( MYROW( grid_ ) == PROW( snode.Index, grid_ ) && isRecvFromCrossDiagonal_(grid_->numProcRow, snode.Index ) ){//如果本processor是一个receiver
           Int recvIdx=0;
           for(Int srcRow = 0; srcRow<grid_->numProcRow; srcRow++){
             if(isRecvFromCrossDiagonal_(srcRow,snode.Index) ){
@@ -1054,7 +1055,7 @@ namespace PEXSI{
 #if ( _DEBUGlevel_ >= 1 )
                 assert(IDX_TO_TAG(snode.Rank,SELINV_TAG_L_CONTENT_CD,limIndex_)<=maxTag_);
 #endif
-                MPI_Irecv( (void*)&sstrLcolRecv[0], sstrSize, MPI_BYTE, src, IDX_TO_TAG(snode.Rank,SELINV_TAG_L_CONTENT_CD,limIndex_), grid_->comm, &mpiReqRecv );
+                MPI_Irecv( (void*)&sstrLcolRecv[0], sstrSize, MPI_BYTE, src, IDX_TO_TAG(snode.Rank,SELINV_TAG_L_CONTENT_CD,limIndex_), grid_->comm, &mpiReqRecv );//接受内容
                 recvIdx++;
               }
             }
@@ -1063,7 +1064,7 @@ namespace PEXSI{
       }
 
       //waitall content
-      mpi::Waitall(arrMpiReqsRecvCD);
+      mpi::Waitall(arrMpiReqsRecvCD);//等所有内容都接受完
       //Do the work
       for (Int supidx=0; supidx<stepSuper; supidx++){
         SuperNodeBufferType & snode = arrSuperNodes[supidx];
@@ -1078,19 +1079,19 @@ namespace PEXSI{
           statusOFS << std::endl << " ["<<snode.Index<<"] "<<   "rowLocalPtr:" << snode.RowLocalPtr << std::endl << std::endl; 
 #endif
 
-          std::vector<UBlock<T> >&  Urow = this->U( LBi( snode.Index, grid_ ) );
+          std::vector<UBlock<T> >&  Urow = this->U( LBi( snode.Index, grid_ ) );//找到本地保存的所有U block，准备进行覆盖了
           std::vector<bool> isBlockFound(Urow.size(),false);
 
           recvIdx=0;
           for(Int srcRow = 0; srcRow<grid_->numProcRow; srcRow++){
             if(isRecvFromCrossDiagonal_(srcRow,snode.Index) ){
-              Int src = PNUM(srcRow,PCOL(snode.Index,grid_),grid_);
+              Int src = PNUM(srcRow,PCOL(snode.Index,grid_),grid_);//找到src processor
               TIMER_START(Recv_L_CrossDiag);
 
               std::vector<Int> rowLocalPtrRecv;
               std::vector<Int> blockIdxLocalRecv;
               NumMat<T> UUpdateBuf;
-
+              //对应src processor对数据进行解码
               if( MYPROC( grid_ ) != src ){
                 std::stringstream sstm;
                 Int & sstrSize = arrSstrLcolSizeRecvCD[recvOffset[supidx]+recvIdx];
@@ -1125,13 +1126,13 @@ namespace PEXSI{
               for( Int ib = 0; ib < blockIdxLocalRecv.size(); ib++ ){
                 for( Int jb = 0; jb < Urow.size(); jb++ ){
                   UBlock<T>& UB = Urow[jb];
-                  if( UB.blockIdx == blockIdxLocalRecv[ib] ){
+                  if( UB.blockIdx == blockIdxLocalRecv[ib] ){//找到对应的block进行覆盖
                     NumMat<T> Ltmp ( UB.numCol, UB.numRow );
                     lapack::Lacpy( 'A', Ltmp.m(), Ltmp.n(), 
                         &UUpdateBuf( rowLocalPtrRecv[ib], 0 ),
                         UUpdateBuf.m(), Ltmp.Data(), Ltmp.m() );
                     isBlockFound[jb] = true;
-                    Transpose( Ltmp, UB.nzval );
+                    Transpose( Ltmp, UB.nzval );//当然覆盖过来的需要转置一下
                     break;
                   }
                 }
@@ -2438,11 +2439,12 @@ namespace PEXSI{
       for (Int supidx=0; supidx<stepSuper; supidx++){ //对于每一个要操作的supernode
         SuperNodeBufferType & snode = arrSuperNodes[supidx];
 
-        ComputeDiagUpdate(snode, quantSuperNode);
+        ComputeDiagUpdate(snode, quantSuperNode);//计算第四步Lck^T * Ack ^ -1，这里有一个量化，
 
         //Get the reduction tree
         TreeReduce<T> * redDTree = redToAboveTree_[snode.Index];
-
+        //下面都不是很懂的样子
+        //不知道进行什么reduce
         if(redDTree != NULL){
           //send the data
           if( MYROW( grid_ ) == PROW( snode.Index, grid_ ) ){
@@ -2462,7 +2464,7 @@ namespace PEXSI{
           }
 
           redDTree->SetDataReady(true);
-          bool done = redDTree->Progress();
+          bool done = redDTree->Progress();//又是什么reduce？
 #if ( _DEBUGlevel_ >= 1 )
           statusOFS<<"["<<snode.Index<<"] "<<" trying to progress reduce D "<<done<<std::endl;
 #endif
@@ -2471,7 +2473,7 @@ namespace PEXSI{
         //advance reductions
         for (Int supidx=0; supidx<stepSuper; supidx++){
           SuperNodeBufferType & snode = arrSuperNodes[supidx];
-          TreeReduce<T> * redDTree = redToAboveTree_[snode.Index];
+          TreeReduce<T> * redDTree = redToAboveTree_[snode.Index];//又是什么reduce，看不太懂
           if(redDTree != NULL){
             if(redDTree->IsAllocated())
             {
@@ -2506,17 +2508,18 @@ namespace PEXSI{
                 statusOFS<<"["<<snode.Index<<"] "<<" trying to progress reduce D "<<done<<std::endl;
 #endif
                 is_done[supidx]=done?1:0;
-                if(done){
+                if(done){//如果reduce完了，是说Lkk的数据完事了么
 
 #if ( _DEBUGlevel_ >= 1 )
                   statusOFS<<"["<<snode.Index<<"] "<<" DONE reduce D"<<std::endl;
 #endif
                   if( MYCOL( grid_ ) == PCOL( snode.Index, grid_ ) ){
-                    if( MYROW( grid_ ) == PROW( snode.Index, grid_ ) ){
-                      LBlock<T> &  LB = this->L( LBj( snode.Index, grid_ ) )[0];
+                    if( MYROW( grid_ ) == PROW( snode.Index, grid_ ) ){//如果是Lkk的话
+                      LBlock<T> &  LB = this->L( LBj( snode.Index, grid_ ) )[0]; //得到Lkk
                       // Symmetrize LB
+                      //Lkk = DiagBuf + Lkk
                       blas::Axpy( LB.numRow * LB.numCol, ONE<T>(), snode.DiagBuf.Data(), 1, LB.nzval.Data(), 1 );
-                      Symmetrize( LB.nzval );
+                      Symmetrize( LB.nzval );//这里好像是第四步的最后一步
                     }
                   }
                   is_done[supidx]=1;
@@ -2535,7 +2538,7 @@ namespace PEXSI{
 
 
 
-      SendRecvCD_UpdateU(arrSuperNodes, stepSuper);
+      SendRecvCD_UpdateU(arrSuperNodes, stepSuper);//这里是第五步！将更新的Ainv发送到U那一边！芜湖！
 
 
 
@@ -2554,7 +2557,7 @@ namespace PEXSI{
           for( Int ib = startBlock; ib < Lcol.size(); ib++ ){
             LBlock<T> & LB = Lcol[ib];
             lapack::Lacpy( 'A', LB.numRow, LB.numCol, &snode.LUpdateBuf( snode.RowLocalPtr[ib-startBlock], 0 ),
-                snode.LUpdateBuf.m(), LB.nzval.Data(), LB.numRow );
+                snode.LUpdateBuf.m(), LB.nzval.Data(), LB.numRow );//这里对L block进行Ainv的覆盖，问题不大
           }
         } // Finish updating L	
       } // for (snode.Index) : Main loop
