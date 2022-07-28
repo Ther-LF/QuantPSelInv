@@ -1,0 +1,27 @@
+var searchData=
+[
+  ['calculateedmcorrectioncomplex_610',['CalculateEDMCorrectionComplex',['../class_p_e_x_s_i_1_1_p_p_e_x_s_i_data.html#aaf809c346705efe249dba674622ccee3',1,'PEXSI::PPEXSIData']]],
+  ['calculateedmcorrectionreal_611',['CalculateEDMCorrectionReal',['../class_p_e_x_s_i_1_1_p_p_e_x_s_i_data.html#a81202d21e3d67ad5f916a4afaed0e24a',1,'PEXSI::PPEXSIData']]],
+  ['calculatefermioperatorcomplex_612',['CalculateFermiOperatorComplex',['../class_p_e_x_s_i_1_1_p_p_e_x_s_i_data.html#a8787de5d9d82115e676dfd3a2a7f4dcb',1,'PEXSI::PPEXSIData']]],
+  ['calculatefermioperatorreal_613',['CalculateFermiOperatorReal',['../class_p_e_x_s_i_1_1_p_p_e_x_s_i_data.html#a115b5fa2acc182926bb9db9ad870aad4',1,'PEXSI::PPEXSIData']]],
+  ['calculatefermioperatorreal3_614',['CalculateFermiOperatorReal3',['../class_p_e_x_s_i_1_1_p_p_e_x_s_i_data.html#acdc623f5a5d10afe5070366dbaa90706',1,'PEXSI::PPEXSIData']]],
+  ['calculatenegativeinertiacomplex_615',['CalculateNegativeInertiaComplex',['../class_p_e_x_s_i_1_1_p_p_e_x_s_i_data.html#aad5c7c1f73eb8d0dd38fc764357faea9',1,'PEXSI::PPEXSIData']]],
+  ['calculatenegativeinertiareal_616',['CalculateNegativeInertiaReal',['../class_p_e_x_s_i_1_1_p_p_e_x_s_i_data.html#a58c0c46d2ab48c5fd722dcf1e1f4e76a',1,'PEXSI::PPEXSIData']]],
+  ['cdcol_617',['CDCOL',['../namespace_p_e_x_s_i.html#a1efa7f65fd022438ad48b8b2de28f8e4',1,'PEXSI']]],
+  ['cdpnum_618',['CDPNUM',['../namespace_p_e_x_s_i.html#aeccae3dc06281a9028ed2c71a60fa312',1,'PEXSI']]],
+  ['cdrow_619',['CDROW',['../namespace_p_e_x_s_i.html#a831c38f5c53ad09b0448e490812f6c0a',1,'PEXSI']]],
+  ['ceiling_620',['CEILING',['../namespace_p_e_x_s_i.html#a37990a4eceb4bdac6ed827bcfc0be231',1,'PEXSI']]],
+  ['checkerrordistmultivector_621',['CheckErrorDistMultiVector',['../class_p_e_x_s_i_1_1_super_l_u_matrix.html#ae2d79793574900ae1e25c24e9c5d64ad',1,'PEXSI::SuperLUMatrix::CheckErrorDistMultiVector()'],['../class_p_e_x_s_i_1_1_super_l_u_matrix_3_01_real_01_4.html#a8e6f2fa3ef91cea52dbc332ef1c3b673',1,'PEXSI::SuperLUMatrix&lt; Real &gt;::CheckErrorDistMultiVector()'],['../class_p_e_x_s_i_1_1_super_l_u_matrix_3_01_complex_01_4.html#a65a1ada096ba0a3b58a76416f050f1fa',1,'PEXSI::SuperLUMatrix&lt; Complex &gt;::CheckErrorDistMultiVector()']]],
+  ['clear_622',['Clear',['../struct_p_e_x_s_i_1_1_dist_sparse_matrix.html#aac331c0019bb3a1b94fc02833ff7daf2',1,'PEXSI::DistSparseMatrix']]],
+  ['computediagupdate_623',['ComputeDiagUpdate',['../class_p_e_x_s_i_1_1_p_matrix.html#ac3026c708a931b10798c69fa6dea1470',1,'PEXSI::PMatrix::ComputeDiagUpdate()'],['../class_p_e_x_s_i_1_1_p_matrix_unsym.html#ae5a3f007359715719b27cc5332dea561',1,'PEXSI::PMatrixUnsym::ComputeDiagUpdate()']]],
+  ['constructcommunicationpattern_624',['ConstructCommunicationPattern',['../class_p_e_x_s_i_1_1_p_matrix.html#a9ab522c5b09ef23435a1292a1be1074f',1,'PEXSI::PMatrix::ConstructCommunicationPattern()'],['../class_p_e_x_s_i_1_1_p_matrix_unsym.html#adcc0df2afd192d73d05e95e813903c8a',1,'PEXSI::PMatrixUnsym::ConstructCommunicationPattern()']]],
+  ['constructcommunicationpattern_5fp2p_625',['ConstructCommunicationPattern_P2p',['../class_p_e_x_s_i_1_1_p_matrix.html#ab3fb44f9da5a32e6baae98fa8519045d',1,'PEXSI::PMatrix::ConstructCommunicationPattern_P2p()'],['../class_p_e_x_s_i_1_1_p_matrix_unsym.html#af678b3565322c608ea379adc261b537f',1,'PEXSI::PMatrixUnsym::ConstructCommunicationPattern_P2p()']]],
+  ['convertnrloctonc_626',['ConvertNRlocToNC',['../class_p_e_x_s_i_1_1_super_l_u_matrix.html#a7013f398d86e80397dc312ee7825d9bc',1,'PEXSI::SuperLUMatrix::ConvertNRlocToNC()'],['../class_p_e_x_s_i_1_1_super_l_u_matrix_3_01_real_01_4.html#a49d13841fe2f3d84a13b990df4f13854',1,'PEXSI::SuperLUMatrix&lt; Real &gt;::ConvertNRlocToNC()'],['../class_p_e_x_s_i_1_1_super_l_u_matrix_3_01_complex_01_4.html#ac988ff3600fb6715e48e6ca2846e4c43',1,'PEXSI::SuperLUMatrix&lt; Complex &gt;::ConvertNRlocToNC()']]],
+  ['copy_627',['Copy',['../class_p_e_x_s_i_1_1_mod_b_tree_bcast.html#aa76548f58431a65b5ed830e7ea89d525',1,'PEXSI::ModBTreeBcast']]],
+  ['countrecvfrombelow_628',['CountRecvFromBelow',['../class_p_e_x_s_i_1_1_p_matrix.html#a29996413cccd4e764ef1671f762255b6',1,'PEXSI::PMatrix']]],
+  ['countrecvfromcrossdiagonal_629',['CountRecvFromCrossDiagonal',['../class_p_e_x_s_i_1_1_p_matrix.html#ab99a1bcf885931784f56be579ce4458e',1,'PEXSI::PMatrix']]],
+  ['countsendtobelow_630',['CountSendToBelow',['../class_p_e_x_s_i_1_1_p_matrix.html#aab4330e528142a67d69217b26586775d',1,'PEXSI::PMatrix']]],
+  ['countsendtocrossdiagonal_631',['CountSendToCrossDiagonal',['../class_p_e_x_s_i_1_1_p_matrix.html#a2da87bfb5b7a691452559cf276e8823f',1,'PEXSI::PMatrix']]],
+  ['countsendtoright_632',['CountSendToRight',['../class_p_e_x_s_i_1_1_p_matrix.html#a845a3ac3724629ee00b445a493e18343',1,'PEXSI::PMatrix']]],
+  ['create_633',['Create',['../class_p_e_x_s_i_1_1_p_matrix.html#a2d3df622b1b9e3906331ddcea24efaf1',1,'PEXSI::PMatrix']]]
+];
