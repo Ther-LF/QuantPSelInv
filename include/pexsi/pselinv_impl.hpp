@@ -443,11 +443,9 @@ namespace PEXSI{
         std::vector<LBlock<T> > & LcolRecv, 
         std::vector<UBlock<T> > & UrowRecv, 
         NumMat<T> & AinvBuf,
-        NumMat<float> & AinvBuf_quant,
         NumMat<T> & UBuf,
         NumMat<float> & UBuf_quant,
         std::set<std::string> & quantSuperNode,
-        bool & quantAinvBuf,
         bool & quantUBuf )
     {
       TIMER_START(Compute_Sinv_LT_Lookup_Indexes);
@@ -480,13 +478,11 @@ namespace PEXSI{
       //分配了Ainv和U矩阵的空间
       AinvBuf.Resize( numRowAinvBuf, numColAinvBuf );//Ainv为非零行 * 非零列
       UBuf.Resize( SuperSize( snode.Index, super_ ), numColAinvBuf );//U矩阵为supernode行 * 非零列，合理
-      AinvBuf_quant.Resize( numRowAinvBuf, numColAinvBuf );//AinvBuf_quant和AinvBuf一样
       UBuf_quant.Resize( SuperSize( snode.Index, super_ ), numColAinvBuf );//UBuf_quant和UBuf一样
 
       SetValue(AinvBuf, (double)0.0);//填充它们为0，当为低精度的时候就不用计算了，后面再用低精度的计算补上
       SetValue(UBuf, (double)0.0);//填充它们为0，当为低精度的时候就不用计算了，后面再用低精度的计算补上
       SetValue(UBuf_quant, (float)0.0);//填充它们为0，用于做高精度的补充
-      SetValue(AinvBuf_quant, (float)0.0);//填充它们为0，用于做高精度的补充
 
       int snode_index = snode.Index;//记录snode的index，对于Ublock而言它是行，Ublock自身的index是列，对于Lblock而言它是列，Lblock自身的index是行
       std::stringstream ss;//记录supernode的index
@@ -518,7 +514,7 @@ namespace PEXSI{
           //首先将它的值复制到一个临时矩阵中，不过不知道这一步后面能不能优化，就是直接复制了
           //因为感觉可能Lacpy有一些优化所以这类还是先临时复制一下
           quantUBuf = true;
-          // std::cout<<"Quant:"<<ss.str()<<std::endl;
+          // std::cout<<"Step 3 : Quant:"<<ss.str()<<std::endl;
           NumMat<float> UB_float(UB.numRow, UB.numCol);
           for(int j = 0;j<UB.numCol;j++){
             for(int i = 0;i<UB.numRow;i++){
@@ -547,10 +543,7 @@ namespace PEXSI{
           UBlock<T>& UB = UrowRecv[jb];//得到接收到的Ublock
           Int isup = LB.blockIdx;//找到对应的L block的supernode行
           Int jsup = UB.blockIdx;//找到对应的U block的supernode列
-          ss.str("");
-          ss<<isup<<","<<jsup;//记录复制的supernode下标
           T* nzvalAinv = &AinvBuf( rowPtr[ib], colPtr[jb] );//得到(isup, jsup)的第一个数据位置，即第j列第i行，这里是column major
-          float* nzvalAinv_quant = &AinvBuf_quant(rowPtr[ib], colPtr[jb]);//同理得到Ainv_quant的(isup, jsup)位置
           Int     ldAinv    = AinvBuf.m();//得到有多少行，这是干嘛勒
 
           // Pin down the corresponding block in the part of Sinv.
@@ -703,23 +696,13 @@ namespace PEXSI{
                 T* nzvalSinv = SinvB.nzval.Data();
                 Int     ldSinv    = SinvB.numRow;//得到Sinv Block的行
                 
-                if(quantSuperNode.find(ss.str()) == quantSuperNode.end()){
                   for( Int j = 0; j < UB.numCol; j++ ){
                     for( Int i = 0; i < LB.numRow; i++ ){
                       nzvalAinv[i+j*ldAinv] =
                         nzvalSinv[relRows[i] + relCols[j] * ldSinv];//这里就是将Sinv Block复制到Ainv的对应地方去了
                     }
                   }
-                }else{
-                  //进行量化
-                  quantAinvBuf = true;
-                  for( Int j = 0; j < UB.numCol; j++ ){
-                    for( Int i = 0; i < LB.numRow; i++ ){
-                      nzvalAinv_quant[i+j*ldAinv] =
-                        (float)nzvalSinv[relRows[i] + relCols[j] * ldSinv];//这里就是将Sinv Block复制到Ainv_quant的对应地方去了
-                    }
-                  }
-                }
+
                 
 #endif
 
@@ -880,23 +863,14 @@ namespace PEXSI{
                 T* nzvalSinv = SinvB.nzval.Data();
                 Int     ldSinv    = SinvB.numRow;
                 
-                if(quantSuperNode.find(ss.str()) == quantSuperNode.end()){
+
                   for( Int j = 0; j < UB.numCol; j++ ){
                     for( Int i = 0; i < LB.numRow; i++ ){
                       nzvalAinv[i+j*ldAinv] =
                         nzvalSinv[relRows[i] + relCols[j] * ldSinv];//这里就是将Sinv Block复制到Ainv的对应地方去了
                     }
                   }
-                }else{
-                  //进行量化
-                  quantAinvBuf = true;
-                  for( Int j = 0; j < UB.numCol; j++ ){
-                    for( Int i = 0; i < LB.numRow; i++ ){
-                      nzvalAinv_quant[i+j*ldAinv] =
-                        (float)nzvalSinv[relRows[i] + relCols[j] * ldSinv];//这里就是将Sinv Block复制到Ainv_quant的对应地方去了
-                    }
-                  }
-                }
+
 #endif
 
                 isBlockFound = true;
@@ -1259,7 +1233,7 @@ namespace PEXSI{
           }else{
             //进行量化，但是由于精度不同，应该分为两步
             //先把A-1和L进行量化
-            std::cout<<"Quant"<<ss.str()<<std::endl;
+            // std::cout<<"Step 5 : Quant "<<ss.str()<<std::endl;
             
 
             // double* LUpdateBuf_data =  &snode.LUpdateBuf( snode.RowLocalPtr[ib-startIb], 0 );
@@ -2105,18 +2079,16 @@ namespace PEXSI{
               // Save all the data to be updated for { L( isup, snode.Index ) | isup > snode.Index }.
               // The size will be updated in the Gemm phase and the reduce phase
                             
-              NumMat<float> AinvBuf_other;//记录量化部分的AinvBuf
               NumMat<float> UBuf_other;//记录量化部分的UBuf
               
-              bool quantAinvBuf = false;//记录AinvBuf是否有被量化的部分
               bool quantUBuf = false;//记录UBuf是否有被量化的部分
 
               UnpackData(snode, LcolRecv, UrowRecv);//将接收到的数据放回LU block中，即它接收到的L block和U block现在都在LcolRecv以及UrowRecv里面了
               //NumMat<T> AinvBuf, UBuf;
-              SelInv_lookup_indexes(snode,LcolRecv, UrowRecv,AinvBuf, AinvBuf_other, UBuf, UBuf_other, quantSuperNode, quantAinvBuf, quantUBuf);//这一步是把UrowRecv里面的东西都复制到UBuf中，把LcolRecv和UrowRecv里面的东西复制到AinvBuf中
+              SelInv_lookup_indexes(snode,LcolRecv, UrowRecv,AinvBuf, UBuf, UBuf_other, quantSuperNode, quantUBuf);//这一步是把UrowRecv里面的东西都复制到UBuf中，把LcolRecv和UrowRecv里面的东西复制到AinvBuf中
 
               snode.LUpdateBuf.Resize( AinvBuf.m(), SuperSize( snode.Index, super_ ) );//调整LUpdateBuf的大小，为AinvBuf行，snode对应supernode大小的列
-              if(!quantAinvBuf && !quantUBuf){//如果左右都没有量化的supernode，那么就是一个普通的GEMM
+              if(!quantUBuf){//如果左右都没有量化的supernode，那么就是一个普通的GEMM
   #ifdef GEMM_PROFILE
                 gemm_stat.push_back(AinvBuf.m());
                 gemm_stat.push_back(UBuf.m());
@@ -2133,125 +2105,8 @@ namespace PEXSI{
                     UBuf.Data(), UBuf.m(), ZERO<T>(),
                     snode.LUpdateBuf.Data(), snode.LUpdateBuf.m() ); 
                 TIMER_STOP(Compute_Sinv_LT_GEMM);
-              }else if(quantAinvBuf && quantUBuf){//如果左右都有量化的supernode
-                NumMat<float> quantBuf(AinvBuf.m(), SuperSize( snode.Index, super_ ));//记录公式的临时量化数据大小
-                NumMat<float> AinvBuf_quant(AinvBuf.m(), AinvBuf.n());//记录AinvBuf的量化
-                NumMat<float> UBuf_quant(UBuf.m(), UBuf.n());//记录UBuf的量化
-
-                //对AinvBuf和UBuf进行量化，保存到AinfBuf_quant和UBuf_quant中，后面公式要用到
-                for(int j = 0;j<AinvBuf.n();j++){
-                  for(int i = 0;i<AinvBuf.m();i++){
-                    AinvBuf_quant(i, j) = (float)AinvBuf(i, j);
-                  }
-                }
-                for(int j = 0;j<UBuf.n();j++){
-                  for(int i = 0;i<UBuf.m();i++){
-                    UBuf_quant(i, j) = (float)UBuf(i, j);
-                  }
-                }
-                
-  #ifdef GEMM_PROFILE
-                gemm_stat.push_back(AinvBuf.m());
-                gemm_stat.push_back(UBuf.m());
-                gemm_stat.push_back(AinvBuf.n());
-  #endif
-                TIMER_START(Compute_Sinv_LT_GEMM);
-                //公式为-1 * (AinvBuf + AinvBuf_other) * (UBuf + UBuf_other)^T
-                //即(1) -1 * AinvBuf * Ubuf^T + (2) -1 * AinvBuf* UBuf_other^T + (3) -1 * AinvBuf_other * UBuf^T + (4) -1 * AinvBuf_other * UBuf_other^T
-                //这里首先计算(1)，并且把结果保存在最终的结果LUpdateBuf中，后面的结果都是直接加在上面的
-                blas::Gemm( 'N', 'T', AinvBuf.m(), UBuf.m(), AinvBuf.n(), MINUS_ONE<T>(), 
-                    AinvBuf.Data(), AinvBuf.m(), 
-                    UBuf.Data(), UBuf.m(), ZERO<T>(),
-                    snode.LUpdateBuf.Data(), snode.LUpdateBuf.m() ); 
-                
-                //然后计算(2)，将结果保存在quantBuf中
-                blas::Gemm('N', 'T', AinvBuf_quant.m(), UBuf_other.m(), AinvBuf_quant.n(), MINUS_ONE<float>(),
-                    AinvBuf_quant.Data(), AinvBuf_quant.m(),
-                    UBuf_other.Data(), UBuf_other.m(), ZERO<float>(),
-                    quantBuf.Data(), quantBuf.m());
-                
-                //将quantBuf的结果添加到LUpadateBuf中
-                for(int j = 0;j<quantBuf.n();j++){
-                  for(int i = 0;i<quantBuf.m();i++){
-                    snode.LUpdateBuf(i, j) = snode.LUpdateBuf(i, j) + (double)quantBuf(i, j);
-                  }
-                }
-
-                //然后计算(3)，将结果保存在quantBuf中
-                blas::Gemm('N', 'T', AinvBuf_other.m(), UBuf_quant.m(), AinvBuf_other.n(), MINUS_ONE<float>(),
-                    AinvBuf_other.Data(), AinvBuf_other.m(),
-                    UBuf_quant.Data(), UBuf_quant.m(), ZERO<float>(),
-                    quantBuf.Data(), quantBuf.m());
-
-                //将quantBuf的结果添加到LUpadateBuf中
-                for(int j = 0;j<quantBuf.n();j++){
-                  for(int i = 0;i<quantBuf.m();i++){
-                    snode.LUpdateBuf(i, j) = snode.LUpdateBuf(i, j) + (double)quantBuf(i, j);
-                  }
-                }
-
-                //最后计算(4)，将结果保存在quantBuf中
-                blas::Gemm('N', 'T', AinvBuf_other.m(), UBuf_other.m(), AinvBuf_other.n(), MINUS_ONE<float>(),
-                    AinvBuf_other.Data(), AinvBuf_other.m(),
-                    UBuf_other.Data(), UBuf_other.m(), ZERO<float>(),
-                    quantBuf.Data(), quantBuf.m());
-
-                //将quantBuf的结果添加到LUpadateBuf中
-                for(int j = 0;j<quantBuf.n();j++){
-                  for(int i = 0;i<quantBuf.m();i++){
-                    snode.LUpdateBuf(i, j) = snode.LUpdateBuf(i, j) + (double)quantBuf(i, j);
-                  }
-                }
-                TIMER_STOP(Compute_Sinv_LT_GEMM);
-                //最后释放这些资源
-                AinvBuf_other.deallocate();
-                AinvBuf_quant.deallocate();
-                UBuf_other.deallocate();
-                UBuf_quant.deallocate();
-                quantBuf.deallocate();
-            }else if(quantAinvBuf && !quantUBuf){//如果只有AinvBuf进行量化，UBuf没有量化的supernode
-                NumMat<float> quantBuf(AinvBuf.m(), SuperSize( snode.Index, super_ ));//记录公式的临时量化数据大小
-                NumMat<float> UBuf_quant(UBuf.m(), UBuf.n());//记录UBuf的量化
-
-                //对UBuf进行量化，保存到UBuf_quant中，后面公式要用到
-                for(int j = 0;j<UBuf.n();j++){
-                  for(int i = 0;i<UBuf.m();i++){
-                    UBuf_quant(i, j) = (float)UBuf(i, j);
-                  }
-                }
-  #ifdef GEMM_PROFILE
-                gemm_stat.push_back(AinvBuf.m());
-                gemm_stat.push_back(UBuf.m());
-                gemm_stat.push_back(AinvBuf.n());
-  #endif
-                TIMER_START(Compute_Sinv_LT_GEMM);
-                //公式为-1 * (AinvBuf + AinvBuf_other) * UBuf^T
-                //即(1) -1 * AinvBuf * Ubuf^T + (2) -1 * AinvBuf_other * UBuf^T 
-                //这里首先计算(1)，并且把结果保存在最终的结果LUpdateBuf中，后面的结果都是直接加在上面的
-                blas::Gemm( 'N', 'T', AinvBuf.m(), UBuf.m(), AinvBuf.n(), MINUS_ONE<T>(), 
-                    AinvBuf.Data(), AinvBuf.m(), 
-                    UBuf.Data(), UBuf.m(), ZERO<T>(),
-                    snode.LUpdateBuf.Data(), snode.LUpdateBuf.m() ); 
-              
-                //然后计算(2)，将结果保存在quantBuf中
-                blas::Gemm('N', 'T', AinvBuf_other.m(), UBuf_quant.m(), AinvBuf_other.n(), MINUS_ONE<float>(),
-                    AinvBuf_other.Data(), AinvBuf_other.m(),
-                    UBuf_quant.Data(), UBuf_quant.m(), ZERO<float>(),
-                    quantBuf.Data(), quantBuf.m());
-
-                //将quantBuf的结果添加到LUpadateBuf中
-                for(int j = 0;j<quantBuf.n();j++){
-                  for(int i = 0;i<quantBuf.m();i++){
-                    snode.LUpdateBuf(i, j) = snode.LUpdateBuf(i, j) + (double)quantBuf(i, j);
-                  }
-                }
-                TIMER_STOP(Compute_Sinv_LT_GEMM);
-                //最后释放这些资源
-                AinvBuf_other.deallocate();
-                UBuf_other.deallocate();
-                UBuf_quant.deallocate();
-                quantBuf.deallocate();
-            }else if(!quantAinvBuf && quantUBuf){//如果只有UBuf进行量化，AinvBuf没有量化的supernode
+              }else{//如果只有UBuf进行量化，AinvBuf没有量化的supernode
+                // std::cout<<"Step 3 : UBuf Quant!"<<std::endl;
                 NumMat<float> quantBuf(AinvBuf.m(), SuperSize( snode.Index, super_ ));//记录公式的临时量化数据大小
                 NumMat<float> AinvBuf_quant(AinvBuf.m(), AinvBuf.n());//记录AinvBuf的量化
 
@@ -2291,7 +2146,6 @@ namespace PEXSI{
 
                 TIMER_STOP(Compute_Sinv_LT_GEMM);
                 //最后释放这些资源
-                AinvBuf_other.deallocate();
                 UBuf_other.deallocate();
                 AinvBuf_quant.deallocate();
                 quantBuf.deallocate();
@@ -5480,7 +5334,7 @@ sstm.rdbuf()->pubsetbuf((char*)tree->GetLocalBuffer(), tree->GetMsgSize());
                   nzvalLDiag.Data(), LB.numCol, LB.nzval.Data(), LB.numRow );
               }else{
                 //这是我魔改的部分
-                // std::cout<<"Quant"<<ss.str()<<std::endl;
+                // std::cout<<"Step 2 : Quant "<<ss.str()<<std::endl;
                 // GetTime(timeSta);
                 int m = nzvalLDiag.m_;
                 int n = nzvalLDiag.n_;

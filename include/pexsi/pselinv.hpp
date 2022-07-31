@@ -674,7 +674,7 @@ protected:
   inline void SelInvIntra_P2p(Int lidx,Int & rank, std::set<std::string> & quantSuperNode );
 
   /// @brief SelInv_lookup_indexes
-  inline void SelInv_lookup_indexes(SuperNodeBufferType & snode, std::vector<LBlock<T> > & LcolRecv, std::vector<UBlock<T> > & UrowRecv, NumMat<T> & AinvBuf, NumMat<float> & AinvBuf_quant, NumMat<T> & UBuf, NumMat<float> & UBuf_quant, std::set<std::string> & quantSuperNode, bool & quantAinvBuf, bool & quantUBuf);
+  inline void SelInv_lookup_indexes(SuperNodeBufferType & snode, std::vector<LBlock<T> > & LcolRecv, std::vector<UBlock<T> > & UrowRecv, NumMat<T> & AinvBuf, NumMat<T> & UBuf, NumMat<float> & UBuf_quant, std::set<std::string> & quantSuperNode, bool & quantUBuf);
   inline void SelInv_lookup_indexes_seq(SuperNodeBufferType & snode, std::vector<LBlock<T> > & LcolRecv, std::vector<UBlock<T> > & UrowRecv, NumMat<T> & AinvBuf,NumMat<T> & UBuf);
 
   /// @brief GetWorkSet
