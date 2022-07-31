@@ -64,7 +64,7 @@ my_readHCSC: my_readHCSC.o ${PEXSI_LIB} ../include/pexsi/*.hpp
 	($(LOADER) -o $@_${SUFFIX} my_readHCSC.o  $(LOADOPTS) )
 
 my_dispalySuperNode: my_dispalySuperNode.o ${PEXSI_LIB} ../include/pexsi/*.hpp 
-	($(LOADER) -o $@_${SUFFIX} my_dispalySuperNode.o  $(LOADOPTS) )
+	($(LOADER) -o $@_${SUFFIX} my_dispalySuperNode.o  /home/therlf/pexsi_v2.0.0/src/lapack.o $(LOADOPTS) )
 
 run_pselinv_unsym: run_pselinv_unsym.o ${PEXSI_LIB} 
 	($(LOADER) -o $@_${SUFFIX} run_pselinv_unsym.o  $(LOADOPTS) )

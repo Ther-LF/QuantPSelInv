@@ -2,18 +2,42 @@
 
 #include "pexsi/timer.h"
 
-#define _MYCOMPLEX_
+// #define _MYCOMPLEX_
 
 #ifdef _MYCOMPLEX_
 #define MYSCALAR Complex
 #else
 #define MYSCALAR Real
 #endif
-
+struct NodeInfo{
+  int row;
+  int col;
+  double avg;
+  double var;
+  int avgRank;
+  int varRank;
+  NodeInfo(){
+    avgRank = 0;
+    varRank = 0;
+  }
+  NodeInfo(int row_, int col_, double avg_, double var_):row(row_), col(col_), avg(avg_), var(var_){
+    avgRank = 0;
+    varRank = 0;
+  }
+};
 
 using namespace PEXSI;
 using namespace std;
 
+bool cmpAvg(struct NodeInfo x, struct NodeInfo y){
+  return abs(x.avg) < abs(y.avg);
+}
+bool cmpVar(struct NodeInfo x, struct NodeInfo y){
+  return x.var < y.var;
+}
+bool cmpRank(struct NodeInfo x, struct NodeInfo y){
+  return (x.avgRank + x.varRank) < (y.avgRank + y.varRank);
+}
 int main(int argc, char *argv[])
 {
     MPI_Init( &argc, &argv );
@@ -35,7 +59,7 @@ int main(int argc, char *argv[])
         // Default processor number
         Int nprow = 1;
         Int npcol = mpisize;
-
+        double delta = atof(options["-delta"].c_str());
         if( options.find("-r") != options.end() ){
             if( options.find("-c") != options.end() ){
                 nprow= atoi(options["-r"].c_str());
@@ -516,29 +540,124 @@ int main(int argc, char *argv[])
             cout << "nonzero in L+U  (PMatrix format) = " << nnzLU << endl;
           }
 
-          if(doConvert){
-            if( mpirank == 0 )
-              cout << "Time for converting LUstruct to PMatrix is " << timeEnd  - timeSta << endl;
+          //记录本processor所拥有的所有supernode，记录其下标和属性
+          vector<struct NodeInfo> nodeInfos;
+          int superNum = PMloc.NumSuper();
+          const GridType* grid_ = PMloc.Grid();
+          IntNumVec superPtr_ = super.superPtr;
+          for(int ksup = 0;ksup<superNum;ksup++){
+            if( MYCOL( grid_ ) == PCOL( ksup, grid_ ) ){//如果本processor和supernode在同一列，说明本processor确实包含了部分supernode信息
+              vector<LBlock<Real> >& Lcol = PMloc.L( LBj( ksup, grid_ ) );//得到所有的LBlock
+              for(LBlock<Real> LB : Lcol){//对于每个L Block，记录它的属性
+                int col = ksup;//记录L Block的列
+                int row = LB.blockIdx;//记录L Block的行
+                NumMat<Real> nzval = LB.nzval;
+                //下面开始计算总和
+                double sum = 0;
+                for(int j = 0;j<LB.numCol;j++){
+                  for(int i = 0;i<LB.numRow;i++){
+                    sum += nzval(i, j);
+                  }
+                }
+                //计算平均值
+                int numCol = superPtr_(col + 1) - superPtr_(col);//这个supernode具有的列数
+                int numRow = superPtr_(row + 1) - superPtr_(row);//这个supernode具有的行数
+                double avg = sum / (numCol * numRow);
+                //计算方差
+                double var = 0;
+                for(int j = 0;j<LB.numCol;j++){
+                  for(int i = 0;i<LB.numRow;i++){
+                    var += (nzval(i, j) - avg) * (nzval(i, j) - avg);
+                  }
+                }
+                var /= (numCol * numRow);
+                //将这个L Block放入数组中用于后续发送
+                struct NodeInfo tmp(row, col, avg, var);
+                nodeInfos.push_back(tmp);
+                // cout<<"("<<tmp.row<<","<<tmp.col<<"):"<<tmp.avg<<" "<<tmp.var<<endl;
+              }
+            }
           }
-          //到这里supernode和LU就保存在各个processor里面了
-          //输出这个processor的supernode数量
-          MPI_Barrier(world_comm);
-          cout<<mpirank<<":supernode number:"<<PMloc.NumSuper()<<endl;
-          cout<<mpirank<<":block column number:"<<PMloc.NumLocalBlockCol()<<endl;
-          cout<<mpirank<<":block row number:"<<PMloc.NumLocalBlockRow()<<endl;
-          cout<<mpirank<<":col number:"<<PMloc.NumCol()<<endl;
-          cout<<mpirank<<":block col indices length:"<<PMloc.ColBlockIdx().size()<<endl;  
-          cout<<mpirank<<":block row indices length:"<<PMloc.RowBlockIdx().size()<<endl;
-          MPI_Barrier(world_comm);
-          vector<vector<int> > colBlockIdx = PMloc.ColBlockIdx();
-          ofstream superCol;
-          ss.clear();
-          ss<<"superCol"<<mpirank;
-          superCol.open("superCol");
-          const SuperNodeType* supernode = PMloc.SuperNode();
-          for(int i = 0;i<supernode->superPtr.m();i++){
-            superCol<<supernode->superPtr[i]<<" ";
+          //现在申请MPI_Type来发送NodeInfo类型的数组
+          int blockLength[] = {1, 1, 1, 1, 1, 1};
+          MPI::Datatype oldTypes[] = {MPI_INT, MPI_INT, MPI_DOUBLE, MPI_DOUBLE, MPI_INT, MPI_INT};
+          MPI::Aint addressOffsets[6];
+          struct NodeInfo tmp;
+          MPI_Address(&tmp.row, &addressOffsets[0]);
+          MPI_Address(&tmp.col, &addressOffsets[1]);
+          MPI_Address(&tmp.avg, &addressOffsets[2]);
+          MPI_Address(&tmp.var, &addressOffsets[3]);
+          MPI_Address(&tmp.avgRank, &addressOffsets[4]);
+          MPI_Address(&tmp.varRank, &addressOffsets[5]);
+          addressOffsets[5] = addressOffsets[5] - addressOffsets[0];
+          addressOffsets[4] = addressOffsets[4] - addressOffsets[0];
+          addressOffsets[3] = addressOffsets[3] - addressOffsets[0];
+          addressOffsets[2] = addressOffsets[2] - addressOffsets[0];
+          addressOffsets[1] = addressOffsets[1] - addressOffsets[0];
+          addressOffsets[0] = 0;
+          MPI::Datatype newType = MPI::Datatype::Create_struct(6, blockLength, addressOffsets, oldTypes);
+          newType.Commit();
+          //首先发送数组的大小，方便后面使用MPI_Gatherv函数
+          int *recvCount = NULL;
+          if(mpirank == 0){
+            recvCount = (int*)malloc(sizeof(int) * mpisize);
           }
+          int cnt = nodeInfos.size();
+          MPI_Gather(&cnt, 1, MPI_INT, recvCount, 1, MPI_INT, 0, world_comm);
+          //然后每个processor发送不同尺寸的数组
+          struct NodeInfo* recvBuf = NULL;
+          int* displs = NULL;
+          int recvSize = 0;
+          if(mpirank == 0){
+            displs = (int*)malloc(sizeof(int) * mpisize);
+            displs[0] = 0;
+            for(int i = 1;i<mpisize;i++){
+              displs[i] = displs[i - 1] + recvCount[i - 1];
+            }
+            recvSize = displs[mpisize - 1] + recvCount[mpisize - 1];
+            recvBuf = (struct NodeInfo*)malloc(sizeof(struct NodeInfo) * recvSize);
+          }
+          MPI_Gatherv(nodeInfos.data(), nodeInfos.size(), newType, recvBuf, recvCount, displs, newType, 0, world_comm);
+          if(mpirank == 0){
+            // for(int i = 0;i<recvSize;i++){
+            //   cout<<"(" <<recvBuf[i].row << "," <<recvBuf[i].col <<"):"<<recvBuf[i].avg<<" "<<recvBuf[i].var<<endl;
+            // }
+            // //得到数据后，首先将他们按照平均值的绝对值从小到大排序
+            // sort(recvBuf, recvBuf + recvSize, cmpAvg);
+            // for(int i = 0;i<recvSize;i++){
+            //   recvBuf[i].avgRank = i;
+            // }
+            // //然后按照方差的顺序从小到达排序
+            // sort(recvBuf, recvBuf + recvSize, cmpVar);
+            // for(int i = 0;i<recvSize;i++){
+            //   recvBuf[i].varRank = i; 
+            // }
+            // //最后综合排名排序
+            // sort(recvBuf, recvBuf + recvSize, cmpRank);
+            // ofstream superCol;
+            // superCol.open("my_superInfo");
+            // for(int i = 0;i<recvSize;i++){
+            //   string pos = "(" + to_string(recvBuf[i].row) + "," + to_string(recvBuf[i].col) + ")";
+            //   superCol << pos << "\t\t\t\t" << recvBuf[i].avg << "\t\t\t\t" << recvBuf[i].var << endl;
+            // }
+            // superCol.close();
+            //将它们按平均分排序
+            sort(recvBuf, recvBuf + recvSize, cmpAvg);
+            string chose = "";
+            for(int i = 0;i<recvSize;i++){
+              if(recvBuf[i].avg > delta){
+                break;
+              }
+              chose += " " + to_string(recvBuf[i].row) + "," + to_string(recvBuf[i].col);
+              chose += " " + to_string(recvBuf[i].col) + "," + to_string(recvBuf[i].row);
+            }
+            cout<<chose<<endl;
+          }
+          //最后释放这些资源
+          newType.Free();
+          free(recvBuf);
+          free(recvCount);
+          free(displs);
           
           delete PMlocPtr;
           delete superPtr;
