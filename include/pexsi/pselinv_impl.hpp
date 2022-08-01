@@ -499,7 +499,7 @@ namespace PEXSI{
         }
         //进行量化！ 
         ss.str("");
-        ss<<snode_index << "," << UB.blockIdx;
+        ss<< UB.blockIdx << "," << snode_index;//这里反一下，用来查L Block就行了
         if(quantSuperNode.find(ss.str()) == quantSuperNode.end()){
           //如果它不是量化的supernode
           //将接受到的U矩阵复制到Ubuf中

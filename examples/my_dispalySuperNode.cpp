@@ -649,7 +649,6 @@ int main(int argc, char *argv[])
                 break;
               }
               chose += " " + to_string(recvBuf[i].row) + "," + to_string(recvBuf[i].col);
-              chose += " " + to_string(recvBuf[i].col) + "," + to_string(recvBuf[i].row);
             }
             cout<<chose<<endl;
           }

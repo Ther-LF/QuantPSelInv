@@ -65,6 +65,21 @@ void Usage(){
   std::cout << "Usage" << std::endl << "run_pselinv -T [isText] -F [doFacto -E [doTriSolve] -Sinv [doSelInv]]  -H <Hfile> -S [Sfile] -colperm [colperm] -r [nprow] -c [npcol] -npsymbfact [npsymbfact] -P [maxpipelinedepth] -SinvBcast [doSelInvBcast] -SinvPipeline [doSelInvPipeline] -SinvHybrid [doSelInvHybrid] -rshift [real shift] -ishift [imaginary shift] -ToDist [doToDist] -Diag [doDiag] -SS [symmetricStorage]" << std::endl;
 }
 
+static void _split(const std::string &s, char delim, 
+                   std::vector<std::string> &elems) {
+    std::stringstream ss(s);
+    std::string item;
+ 
+    while (std::getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+}
+ 
+std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> elems;
+    _split(s, delim, elems);
+    return elems;
+}
 int main(int argc, char **argv) 
 {
 
@@ -97,6 +112,7 @@ int main(int argc, char **argv)
     int i = 1;
     for(i = 1;i<argc;i+=2){
       if(std::string(argv[i]).compare("-Q") == 0){
+        i++;
         break;
       }
     }
